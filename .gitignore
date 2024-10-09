@@ -1,0 +1,47 @@
+# Quarto generated files
+*.html
+*.pdf
+*.docx
+*.pptx
+*.tex
+*.epub
+
+# R specific files
+.Rhistory
+.RData
+.Rproj.user/
+.Ruserdata
+.Rproj.user/*
+.Rproj.user/**
+
+# Temporary files
+*.tmp
+*.temp
+*.cache
+.cache/
+
+# Files created by knitr and R markdown
+*_cache/
+*_files/
+
+# RStudio project files
+.Rproj
+.Rprofile
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# Logs
+*.log
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Python virtual environments (if applicable)
+venv/
+env/
+__pycache__/
+
+# Hidden files
+.*
