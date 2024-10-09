@@ -1,0 +1,90 @@
+---
+title: "zadanie_1"
+author: "Jakub Wilk - 421315"
+date: "2024-10-09"
+format: html
+editor: visual
+---
+
+# Wprowadzenie
+
+W tym zadaniu analizujemy dane dotyczące jakości powietrza, aby przewidzieć poziom ozonu na podstawie innych zmiennych. Użyjemy regresji liniowej, aby dopasować model oraz stworzymy wykres porównujący rzeczywiste i prognozowane wartości ozonu.
+
+# Biblioteki
+
+Najpierw załadujemy niezbędne biblioteki do analizy danych i wizualizacji.
+
+```{r message=FALSE, warning=FALSE}
+library(parsnip)
+library(tidymodels)
+library(tidyverse)
+library(readr)
+library(broom.mixed)
+library(dotwhisker)
+```
+
+
+# Przygotowanie danych
+Konwersję nazw kolumn na małe litery.
+Usunięcie brakujących danych.
+Usunięcie kolumny day, która nie jest potrzebna.
+Konwersję zmiennej month na typ factor, aby traktować ją jako zmienną kategoryczną.
+
+
+```{r}
+colnames(airquality) <- tolower(colnames(airquality))
+
+air <- 
+  airquality |>
+  as_tibble() |>
+  na.omit() |> 
+  select(-day) |> 
+  mutate(month = factor(month))
+
+# Podgląd przetworzonych danych
+glimpse(air)
+```
+
+
+# Tworzenie modelu regresji liniowej
+Tworzymy model regresji liniowej, w którym zmienną zależną jest poziom ozonu (ozone), a zmiennymi niezależnymi są promieniowanie słoneczne (solar.r), prędkość wiatru (wind), temperatura (temp) oraz miesiąc (month).
+
+```{r}
+lm_mod <- linear_reg() |> 
+  set_engine("lm")
+
+lm_fit <- 
+  lm_mod |> 
+  fit(ozone ~ solar.r + wind + temp + month, data = air)
+
+# Wyświetlenie wyników dopasowanego modelu
+lm_fit$fit |> tidy()
+```
+
+
+# Predykcje
+Na podstawie dopasowanego modelu obliczamy prognozy poziomu ozonu dla naszych danych. Zapisujemy prognozy w nowej kolumnie.
+
+```{r}
+air$predict_ozone <- predict(lm_fit, air)
+
+# Podgląd danych z prognozami
+head(air)
+
+```
+
+
+# Wykres porównania wartości rzeczywistych i prognozowanych
+Wykres, który porównuje rzeczywiste wartości stężenia ozonu z prognozowanymi. Zamiast punktów i linii, używamy kwadratów do oznaczenia danych rzeczywistych oraz dodajemy gradientową linię regresji. Zmieniamy również styl etykiet oraz układ wykresu, aby nadać mu bardziej nowoczesny wygląd.
+
+```{r}
+ggplot(air, aes(x = ozone, y = predict_ozone$.pred)) +
+  geom_point(shape = 15, color = "darkgreen", size = 3) +  
+  geom_smooth(method = "lm", se = TRUE, color = "orange", linetype = "dashed", fill = "lightblue") +
+  labs(
+    title = "Porównanie: Rzeczywiste a Prognozowane Stężenie Ozonu",
+    subtitle = "Model regresji liniowej na podstawie różnych zmiennych",
+    x = "Rzeczywiste wartości ozonu",
+    y = "Prognozowane wartości ozonu"
+  )
+```
