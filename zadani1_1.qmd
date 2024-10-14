@@ -10,7 +10,6 @@ format:
     toc-title: Spis Treści    
     number-sections: true    
     number-depth: 3    
-    embed-resources: true    
     html-math-method: katex    
     code-tools: true    
     code-block-bg: true    
@@ -20,7 +19,6 @@ format:
     link-external-newwindow: true    
     smooth-scroll: true    
     self-contained: true    
-    citation: true    
     theme:         
       dark: solar        
       light: flatly    
@@ -111,8 +109,8 @@ ggplot(air, aes(x = ozone, y = predict_ozone$.pred)) +
   geom_smooth(method = "lm", se = TRUE, color = "orange", linetype = "dashed", fill = "lightblue") +
   labs(
     title = "Porównanie: Rzeczywiste a Prognozowane Stężenie Ozonu",
-    subtitle = "Model regresji liniowej na podstawie różnych zmiennych",
-    x = "Rzeczywiste wartości ozonu",
-    y = "Prognozowane wartości ozonu"
+    subtitle = "Model regresji liniowej wielorakiej",
+    x = "Rzeczywiste stężenia ozonu [ug/m3]",
+    y = "Prognozowane stężenia ozonu [ug/m3]"
   )
 ```
