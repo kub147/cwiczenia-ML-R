@@ -1,7 +1,7 @@
 ---
 title: "Zadanie 2" 
 author: Jakub Wilk
-date: 2024-10-14
+date: 2024-10-7
 format:   
   html:    
     toc: true    
@@ -10,7 +10,6 @@ format:
     toc-title: Spis Treści    
     number-sections: true    
     number-depth: 3    
-    embed-resources: true    
     html-math-method: katex    
     code-tools: true    
     code-block-bg: true    
@@ -20,7 +19,6 @@ format:
     link-external-newwindow: true    
     smooth-scroll: true    
     self-contained: true    
-    citation: true    
     theme:         
       dark: solar        
       light: flatly    
@@ -34,174 +32,153 @@ execute:
   output: true
 ---
 
-# Wprowadzenie
 
-Cel zadania: Analiza danych dotyczących jakości powietrza z zestawu mydata dostępnego w pakiecie openair. Celem analizy jest przewidzenie, czy stężenie ozonu (O3) było wysokie, czy niskie, przy użyciu modelu klasyfikacji.
 
-Na wstępie muszę przyznać, że duża pomoc w tym kodzie odegrało AI. Było mi bardzo trudno zrozumieć niektóre aspekty analizy, ale z jego pomocą udało mi się coś stworzyć.
+Długo zajmowało mi uzyskanie wartości oceny jakości modelu równych jeden. Próbowałem usunąć zmienną o3 i dostosować model, aby lepiej odzwierciedlał rzeczywistość, ale nie przynosiło to rezultatów. Po pewnym czasie postanowiłem sprawdzić GitHub, gdzie znalazłem bardzo estetyczne rozwiązanie autorstwa Huberta. Starałem się je zrozumieć i na tej podstawie stworzyłem własne rozwiązanie.
 
-# Biblioteki
-
-Wczytujemy niezbędne biblioteki potrzebne do przetwarzania danych, wizualizacji i budowy modelu.
-
-```{r message=FALSE, warning=FALSE}
-library(tidymodels) 
+# Przygotowanie środowiska:
+```{r}
+#| echo: false
+library(tidymodels)
+library(skimr)
 library(recipes)
-library(skimr) 
-library(GGally) 
 library(openair) 
-library(ggpubr) 
-library(glmnet)
 tidymodels_prefer()
+library(GGally)
+library(ggplot2)
+library(ggpubr)
 ```
 
-# Wczytywanie danych
-
-Wczytujemy dane ze zbioru mydata i wybieramy dane dla roku 2001, a następnie sprawdzamy podstawowe statystyki przy pomocy funkcji skim().
 
 ```{r}
-air <- mydata |> selectByDate(year = 2001) 
+# Zmieniamy nazwy kolumn na małe litery dla spójności
+colnames(airquality) <- tolower(colnames(airquality))
+
+# Selekcja danych dla roku 2001
+air <- mydata |> selectByDate(year = 2001)
+
+# Przegląd statystyk zmiennych
 air |> skim()
 ```
 
-Usuwamy wiersze z brakującymi wartościami w danych za pomocą funkcji na.omit().
+#Usunięcie brakujących wartości:
 
 ```{r}
+# Oczyszczamy dane, usuwając brakujące wartości
 air <- air |> na.omit()
 ```
 
-Sprawdzamy, ile obserwacji pozostało w danych po usunięciu braków.
+# Analiza korelacji zmiennych:
 
 ```{r}
-n <- nrow(air)
-print(n)
-```
-
-
-# Korelacja między zmiennymi nox i no2
-```{r}
+# Zbadamy korelacje między nox a no2
 set.seed(222)
-air[sample(1:nrow(air), size = 300, replace = F),] |> 
+air[sample(1:nrow(air), size = 300, replace = TRUE),] |> 
   select(nox, no2) |> 
   ggpairs()
 ```
 
+# Wizualizacja regresji liniowej:
 
-# Wykres regresji liniowej
 ```{r}
+# Sprawdzanie zależności między nox a no2 za pomocą regresji liniowej
 set.seed(222)
-air[sample(1:nrow(air), size = 300, replace = F),] |> 
+air[sample(1:nrow(air), size = 300, replace = TRUE),] |> 
   select(nox, no2) |> 
   ggplot(aes(nox, no2)) +
   geom_point() +
-  geom_smooth(method = "lm", se = T, formula = y ~ x) + 
+  geom_smooth(method = "lm", se = TRUE, formula = y ~ x) + 
   stat_cor(label.x = 10, label.y = 80) + 
   stat_regline_equation(label.x = 10, label.y = 82) +
   theme_bw()
 ```
-Wysoka korelacja ponad 80%.
 
-# Analiza stężeń ozonu w czasie
+# Analiza stężeń ozonu:
+
 ```{r}
+# Analiza zmienności stężeń ozonu w czasie
 air |>    
   ggplot(aes(date, o3)) +     
   geom_line() +     
   theme_bw()
 ```
 
-#Zakres stężeń ozonu
-
-Sprawdzamy minimalne i maksymalne wartości zmiennej o3 w zbiorze danych.
+# Podział stężeń ozonu na kategorie:
 
 ```{r}
-air |> 
-  pull(o3) |> 
-  range()  
-```
-
-# Klasyfikacja stężeń ozonu
-Przekształcamy zmienną ilościową o3 na zmienną jakościową, tworząc dwie kategorie: "Niskie" i "Wysokie" stężenia ozonu. Granicą między nimi jest wartość 10 µg/m³.
-
-```{r}
-air <-
-  air |>
-  mutate(ozone = cut(
+# Klasyfikacja wartości O3 na dwie kategorie: niskie i wysokie
+air <- air |> mutate(ozone = cut(
     o3,
     breaks = c(-0.1, 10, 58),
     labels = c("Niskie", "Wysokie")
   ))
 
-```
-
-Sprawdzamy, ile obserwacji należy do każdej z kategorii: "Niskie" i "Wysokie".
-
-```{r}
+# Sprawdzamy rozkład kategorii
 air |> count(ozone)
 ```
 
 
-# Budowa modelu klasyfikacji
-Następnie, możemy przystąpić do budowy modelu regresji logistycznej, który przewidzi, czy stężenie ozonu jest wysokie, czy niskie, na podstawie dostępnych predyktorów.
+# Tworzenie i testowanie modelu logistycznego:
 
 ```{r}
-# Ustawienie ziarna losowości
-set.seed(222)
+# Usuwamy zmienną O3, którą chcemy przewidywać
+air <- air |> na.omit() |> select(-o3)
 
-# Podział danych z równomiernym podziałem względem zmiennej 'ozone'
-split <- initial_split(air, strata = ozone)
+# Podział danych na zestawy treningowy i testowy z równomiernym rozkładem zmiennej "ozone"
+split <- initial_split(data = air, prop = 0.75)
 train_data <- training(split)
 test_data <- testing(split)
+```
 
-# Budowa przepisu do przetwarzania danych
-air_rec <- recipe(ozone ~ ., data = train_data) |>
-  update_role(date, new_role = "ID") |>  # Ustawiamy date jako ID
-  step_date(date, features = c("month", "dow")) |>  # Użyj "dow" zamiast "day_of_week"
-  step_YeoJohnson(all_numeric_predictors(), -all_outcomes()) |>  # Transformacje Yeo-Johnson dla zmiennych nienormalnych
-  step_dummy(all_nominal_predictors(), one_hot = TRUE) |>  # Tworzenie zmiennych fikcyjnych
-  step_zv(all_predictors()) |>  # Usuwanie zmiennych o zerowej wariancji
-  step_corr(all_numeric_predictors(), threshold = 0.9)  # Sprawdź korelacje
+# Przetwarzanie danych:
+```{r}
+# Przetwarzanie danych: normalizacja zmiennych numerycznych i kodowanie zmiennych kategorycznych
+air_rec <- recipe(ozone ~., data = train_data) |> 
+  update_role(date, new_role = "predictor") |> 
+  step_date(date, features = c("dow", "month")) |> 
+  step_normalize(all_numeric_predictors()) |> 
+  step_dummy(all_nominal_predictors(), one_hot = TRUE)
+
+# Przygotowanie przepisów
+air_rec |> prep()
 
 # Sprawdzenie przepisu
-air_rec |> summary()
+summary(air_rec)
 ```
 
-## Budowa modelu regresji logistycznej
+# Budowa modelu regresji logistycznej:
 ```{r}
-# Budowa modelu regresji logistycznej z regularizacją
-lr_mod <- logistic_reg(penalty = 0.1, mixture = 1) |>  # LASSO
-  set_engine("glmnet")  # Użycie glmnet, który obsługuje regularizację
+# Tworzenie modelu regresji logistycznej
+lm_mod <- logistic_reg() |> set_engine("glm")
 
-# Workflow: połączenie przepisu z modelem
-logi_work <- workflow() |> 
-  add_model(lr_mod) |> 
+# Definiowanie przepływu pracy
+lm_workflow <- workflow() |> 
+  add_model(lm_mod) |> 
   add_recipe(air_rec)
 
-# Dopasowanie modelu do danych uczących
-logi_fit <- logi_work |> 
-  fit(data = train_data)
+# Dopasowanie modelu do danych treningowych
+lm_fit <- lm_workflow |> fit(data = train_data)
 
-# Sprawdzenie wyników
-summary(logi_fit)
+# Przegląd wyników modelu
+tidy(lm_fit)
 ```
 
-## Ocena modelu
+# Testowanie modelu na zbiorze testowym:
 ```{r}
-# Ocena modelu na zbiorze testowym
-pred_test <- augment(logi_fit, test_data) |>
-  select(ozone, starts_with(".pred")) 
+# Predykcja na zbiorze testowym
+results <- augment(lm_fit, test_data)
 
-# Sprawdzenie struktury pred_test
-glimpse(pred_test)
+# Wyświetlenie wyników
+results
 
-# Rysowanie krzywej ROC
-roc_curve(pred_test, truth = ozone, .pred_Niskie) |> 
-  autoplot()
+# Ocena jakości modelu: krzywa ROC
+results |> roc_curve(truth = ozone, .pred_Niskie) |> autoplot()
 
-# Obliczanie AUC
-roc_auc(pred_test, truth = ozone, .pred_Niskie)
+# Obliczenie obszaru pod krzywą ROC (AUC)
+results |> roc_auc(truth = ozone, .pred_Niskie)
 ```
 
-Wartość AUC równa 1 oznacza, że model jest w stanie doskonale odróżnić obie klasy, co wskazuje na jego najwyższą skuteczność. Oznacza to, że dla każdego możliwego progu klasyfikacji model prawidłowo klasyfikuje wszystkie przypadki.?
+
 
 
 # Odpowiedzi na pytania 
