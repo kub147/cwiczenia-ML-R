@@ -1,7 +1,7 @@
 ---
 title: "Zadanie 2" 
 author: Jakub Wilk
-date: 2024-10-14
+date: 2024-10-7
 format:   
   html:    
     toc: true    
@@ -10,7 +10,6 @@ format:
     toc-title: Spis Treści    
     number-sections: true    
     number-depth: 3    
-    embed-resources: true    
     html-math-method: katex    
     code-tools: true    
     code-block-bg: true    
@@ -20,7 +19,6 @@ format:
     link-external-newwindow: true    
     smooth-scroll: true    
     self-contained: true    
-    citation: true    
     theme:         
       dark: solar        
       light: flatly    
