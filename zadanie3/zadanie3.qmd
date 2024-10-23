@@ -33,3 +33,189 @@ execute:
 ---
 
 # Wprowadzenie
+W tym ćwiczeniu zastosujemy metody reamplingu do oceny wydajności modeli regresji logistycznej i lasu losowego na podstawie danych o stężeniu ozonu.
+
+## Przygotowanie środowiska
+```{r}
+#| echo: false
+library(tidymodels)
+library(ranger)
+library(rsample)
+library(dplyr)
+library(ggplot2)
+library(yardstick)
+library(openair)
+library(recipes)
+tidymodels_prefer()
+
+# Ustalanie ziarna losowego dla powtarzalności
+set.seed(222)
+```
+
+# Wczytanie i przygotowanie danych
+```{r}
+# Wczytanie danych z openair
+air <- mydata |> 
+  selectByDate(year = 2001) |>
+  na.omit()
+
+# Klasyfikacja wartości O3 na dwie kategorie
+air <- air |> 
+  mutate(ozone = cut(
+    o3,
+    breaks = c(-0.1, 10, 58),
+    labels = c("Niskie", "Wysokie")
+  )) |>
+  select(-o3) # Usuwamy oryginalną zmienną o3
+
+# Przekształcenie zmiennej celu na typ factor
+air$ozone <- as.factor(air$ozone)
+
+# Przygotowanie recipe
+air_recipe <- recipe(ozone ~ ., data = air) |>
+  update_role(date, new_role = "predictor") |>
+  step_date(date, features = c("dow", "month")) |>
+  step_normalize(all_numeric_predictors()) |>
+  step_dummy(all_nominal_predictors(), one_hot = TRUE)
+
+# Podział danych na zestaw treningowy i testowy
+split <- initial_split(air, prop = 0.75, strata = ozone)
+train_data <- training(split)
+test_data <- testing(split)
+```
+
+# Model regresji logistycznej z różnymi metodami reamplingu
+
+## K-krotna walidacja krzyżowa (CV)
+```{r}
+# Definicja modelu
+logistic_model <- logistic_reg() |>
+  set_engine("glm")
+
+# Definicja workflow
+logistic_workflow <- workflow() |>
+  add_model(logistic_model) |>
+  add_recipe(air_recipe)
+
+# K-krotna walidacja krzyżowa
+cv_folds <- vfold_cv(train_data, v = 5, strata = ozone)
+
+# Uczenie modelu na kroswalidacji
+logistic_cv_results <- fit_resamples(
+  logistic_workflow,
+  resamples = cv_folds,
+  metrics = metric_set(accuracy, roc_auc)
+)
+
+# Podsumowanie wyników CV
+print("Wyniki regresji logistycznej (CV):")
+logistic_cv_results |>
+  collect_metrics()
+```
+
+## Bootstrap
+```{r}
+# Bootstrap dla regresji logistycznej
+bootstrap_samples <- bootstraps(train_data, times = 100, strata = ozone)
+
+# Uczenie modelu na próbach bootstrap
+logistic_boot_results <- fit_resamples(
+  logistic_workflow,
+  resamples = bootstrap_samples,
+  metrics = metric_set(accuracy, roc_auc)
+)
+
+# Podsumowanie wyników bootstrap
+print("Wyniki regresji logistycznej (Bootstrap):")
+logistic_boot_results |>
+  collect_metrics()
+```
+
+# Model lasu losowego z różnymi metodami reamplingu
+
+## K-krotna walidacja krzyżowa
+```{r}
+# Definicja modelu lasu losowego
+rf_model <- rand_forest(mtry = 3, trees = 500) |>
+  set_engine("ranger") |>
+  set_mode("classification")
+
+# Definicja workflow
+rf_workflow <- workflow() |>
+  add_model(rf_model) |>
+  add_recipe(air_recipe)
+
+# Uczenie modelu na kroswalidacji
+rf_cv_results <- fit_resamples(
+  rf_workflow,
+  resamples = cv_folds,
+  metrics = metric_set(accuracy, roc_auc)
+)
+
+# Podsumowanie wyników
+print("Wyniki lasu losowego (CV):")
+rf_cv_results |>
+  collect_metrics()
+```
+
+## Bootstrap
+```{r}
+# Uczenie modelu na bootstrapie
+rf_boot_results <- fit_resamples(
+  rf_workflow,
+  resamples = bootstrap_samples,
+  metrics = metric_set(accuracy, roc_auc)
+)
+
+# Podsumowanie wyników
+print("Wyniki lasu losowego (Bootstrap):")
+rf_boot_results |>
+  collect_metrics()
+```
+
+# Porównanie wyników
+```{r}
+# Funkcja pomocnicza do zbierania wyników
+collect_results <- function(results, model_name, method) {
+  results |>
+    collect_metrics() |>
+    mutate(
+      model = model_name,
+      method = method
+    )
+}
+
+# Zbieranie wszystkich wyników
+all_results <- bind_rows(
+  collect_results(logistic_cv_results, "Logistic Regression", "CV"),
+  collect_results(logistic_boot_results, "Logistic Regression", "Bootstrap"),
+  collect_results(rf_cv_results, "Random Forest", "CV"),
+  collect_results(rf_boot_results, "Random Forest", "Bootstrap")
+)
+
+# Wizualizacja wyników
+ggplot(all_results, aes(x = model, y = mean, fill = method)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~.metric, scales = "free_y") +
+  labs(
+    title = "Porównanie wyników modeli i metod reamplingu",
+    x = "Model",
+    y = "Wartość metryki"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+# Wnioski
+1. Główne zmiany w stosunku do poprzedniej wersji:
+   - Użycie danych z pakietu openair zamiast wbudowanego zbioru airquality
+   - Poprawne przetworzenie danych zgodnie z zadaniem 2
+   - Dodanie recipe do przetwarzania danych
+   - Implementacja obu metod reamplingu (CV i bootstrap) dla obu modeli
+
+2. Wyniki pokazują:
+   - Porównanie skuteczności obu modeli (regresja logistyczna vs las losowy)
+   - Różnice między metodami reamplingu (CV vs bootstrap)
+   - Stabilność wyników na różnych próbach danych
+
+3. Wartości metryk (accuracy i ROC AUC) pozwalają ocenić, który model radzi sobie lepiej z zadaniem klasyfikacji poziomów ozonu.
