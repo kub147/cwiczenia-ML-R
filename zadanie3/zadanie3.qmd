@@ -133,7 +133,6 @@ logistic_boot_results |>
 
 # Model lasu losowego z różnymi metodami reamplingu
 
-## K-krotna walidacja krzyżowa
 ```{r}
 # Definicja modelu lasu losowego
 rf_model <- rand_forest(mtry = 3, trees = 500) |>
@@ -144,34 +143,53 @@ rf_model <- rand_forest(mtry = 3, trees = 500) |>
 rf_workflow <- workflow() |>
   add_model(rf_model) |>
   add_recipe(air_recipe)
+```
 
-# Uczenie modelu na kroswalidacji
+## K-krotna walidacja krzyżowa
+```{r}
+#| eval: false
+
 rf_cv_results <- fit_resamples(
   rf_workflow,
   resamples = cv_folds,
   metrics = metric_set(accuracy, roc_auc)
 )
-
-# Podsumowanie wyników
-print("Wyniki lasu losowego (CV):")
-rf_cv_results |>
-  collect_metrics()
 ```
 
 ## Bootstrap
 ```{r}
+#| eval: false
+
 # Uczenie modelu na bootstrapie
 rf_boot_results <- fit_resamples(
   rf_workflow,
   resamples = bootstrap_samples,
   metrics = metric_set(accuracy, roc_auc)
 )
+```
+
+```{r}
+#| eval: false
+save(rf_cv_results, rf_boot_results, file = "modele_cw_3.Rdata")
+```
+
+```{r}
+load(file = "modele_cw_3.Rdata")
+```
+
+
+```{r}
+# Podsumowanie wyników
+print("Wyniki lasu losowego (CV):")
+rf_cv_results |>
+  collect_metrics()
 
 # Podsumowanie wyników
 print("Wyniki lasu losowego (Bootstrap):")
 rf_boot_results |>
   collect_metrics()
 ```
+
 
 # Porównanie wyników
 ```{r}
