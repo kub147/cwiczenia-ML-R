@@ -18,7 +18,7 @@ format:
     link-external-icon: true    
     link-external-newwindow: true    
     smooth-scroll: true    
-    self-contained: true    
+    self-contained: true
     theme:         
       dark: solar        
       light: flatly    
@@ -30,6 +30,8 @@ execute:
   error: false  
   warning: false  
   output: true
+editor_options: 
+  chunk_output_type: console
 ---
 
 
@@ -119,6 +121,9 @@ air |> count(ozone)
 
 
 # Tworzenie i testowanie modelu logistycznego:
+
+było na zajęciach, że o3 jest bez sensu, a czy pozostałe zmienne są potrzebne, czy na pewno są dobrymi zmiennymi objaśniającymi.
+Proszę się zastanowić. Zrobić lepszy przykład. szczególnie w zakresie recipe przypisania ID. Wnioski końcowe, mnie nie satysfakconują bez dobrego modelu. 
 
 ```{r}
 # Usuwamy zmienną O3, którą chcemy przewidywać
