@@ -30,6 +30,8 @@ execute:
   error: false  
   warning: false  
   output: true
+editor_options: 
+  chunk_output_type: console
 ---
 
 # Wprowadzenie
@@ -75,16 +77,21 @@ glimpse(air)
 # Tworzenie modelu regresji liniowej
 Tworzymy model regresji liniowej, w którym zmienną zależną jest poziom ozonu (ozone), a zmiennymi niezależnymi są promieniowanie słoneczne (solar.r), prędkość wiatru (wind), temperatura (temp) oraz miesiąc (month).
 
+Czy to jest najlepszy możliwy model ?
+
 ```{r}
 lm_mod <- linear_reg() |> 
   set_engine("lm")
 
 lm_fit <- 
   lm_mod |> 
-  fit(ozone ~ solar.r + wind + temp + month, data = air)
+  fit(ozone ~ solar.r + wind * temp, data = air)
 
 # Wyświetlenie wyników dopasowanego modelu
-lm_fit$fit |> tidy()
+
+lm_fit$fit |> 
+  tidy() |> 
+  mutate(pstar = ggstats::signif_stars(p.value))
 ```
 
 
@@ -101,6 +108,7 @@ head(air)
 
 
 # Wykres porównania wartości rzeczywistych i prognozowanych
+
 Wykres, który porównuje rzeczywiste wartości stężenia ozonu z prognozowanymi. Zamiast punktów i linii, używamy kwadratów do oznaczenia danych rzeczywistych oraz dodajemy gradientową linię regresji. Zmieniamy również styl etykiet oraz układ wykresu, aby nadać mu bardziej nowoczesny wygląd.
 
 ```{r}
@@ -114,3 +122,50 @@ ggplot(air, aes(x = ozone, y = predict_ozone$.pred)) +
     y = "Prognozowane stężenia ozonu [ug/m3]"
   )
 ```
+
+A jak model sprawdza się w podziale na miesiące ? Proszę 
+
+```{r}
+library(GGally)
+library(ggpubr)
+
+ggplot(air, aes(x = ozone, y = predict_ozone$.pred)) +
+  geom_point(shape = 15, color = "darkgreen", size = 3) +  
+  geom_smooth(method = "lm", se = TRUE, color = "orange", linetype = "dashed", fill = "lightblue") +
+  facet_wrap(~month, scales = "free") +
+  stat_cor(label.y.npc = 0.85) +
+  stat_regline_equation(
+    aes(label =  paste(..adj.rr.label..)), 
+    label.y.npc = 1
+    ) +
+  labs(
+    title = "Porównanie: Rzeczywiste a Prognozowane Stężenie Ozonu",
+    subtitle = "Model regresji liniowej wielorakiej",
+    x = "Rzeczywiste stężenia ozonu [ug/m3]",
+    y = "Prognozowane stężenia ozonu [ug/m3]"
+  )
+
+```
+
+```{r}
+test <- augment(lm_fit, new_data = air) 
+
+# Prosty przykład 
+test |> 
+  group_by(month) |> 
+  yardstick::rmse(ozone, .pred)
+
+# wybór wiely metryk
+# patrz: https://yardstick.tidymodels.org/articles/metric-types.html
+
+multi <- metric_set(mae, rmse, rsq, rsq_trad)
+
+# Zobacz jakie to proste 
+test |> 
+  group_by(month) |> 
+  multi(ozone, .pred) |> 
+  pivot_wider(names_from = .metric, values_from = .estimate) |> 
+  gt::gt() |> 
+  gt::fmt_number(n_sigfig = 3)
+```
+

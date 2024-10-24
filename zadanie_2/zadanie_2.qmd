@@ -19,7 +19,7 @@ format:
     link-external-icon: true    
     link-external-newwindow: true    
     smooth-scroll: true    
-    self-contained: true    
+    self-contained: true
     citation: true    
     theme:         
       dark: solar        
@@ -32,6 +32,8 @@ execute:
   error: false  
   warning: false  
   output: true
+editor_options: 
+  chunk_output_type: console
 ---
 
 # Wprowadzenie
@@ -142,6 +144,9 @@ air |> count(ozone)
 
 # Budowa modelu klasyfikacji
 Następnie, możemy przystąpić do budowy modelu regresji logistycznej, który przewidzi, czy stężenie ozonu jest wysokie, czy niskie, na podstawie dostępnych predyktorów.
+
+było na zajęciach, że o3 jest bez sensu, a czy pozostałe zmienne są potrzebne, czy na pewno są dobrymi zmiennymi objaśniającymi.
+Proszę się zastanowić. Zrobić lepszy przykład. szczególnie w zakresie recipe przypisania ID. Wnioski końcowe, mnie nie satysfakconują bez dobrego modelu. 
 
 ```{r}
 # Ustawienie ziarna losowości
