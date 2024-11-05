@@ -108,7 +108,7 @@ hyper_spec <-
 # Stworzenie siatki parametrów dla lasu losowego
 param_grid <- grid_regular(
   mtry(range = c(1, 10)),
-  min_n(range = c(1, 10)),  # Ustaw wartość zakresu dla min_n
+  min_n(range = c(1, 10)),
   levels = 5
 )
 print("Siatka parametrów dla lasu losowego:")
@@ -147,6 +147,7 @@ basic_rf_workflow <-
   add_model(hyper_spec) |> 
   add_recipe(ozone_recipe)
 ```
+
 
 ## Finalizacja modelu drzewa
 ```{r}

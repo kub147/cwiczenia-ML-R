@@ -1,7 +1,7 @@
 ---
 title: "Zadanie 6" 
 author: Jakub Wilk
-date: 2024-10-23
+date: 2024-11-05
 format:   
   html:    
     toc: true    
@@ -35,31 +35,215 @@ editor_options:
 ---
 
 ```{r}
-# Wczytaj wymagane pakiety
-library(tidymodels)
+library(tidymodels) 
+library(skimr) 
+library(GGally) 
+library(openair) 
+library(dplyr) 
+library(randomForest) 
+library(yardstick)
 library(glmnet)
-library(rpart)
 library(ranger)
-library(readr)
-library(GGally)
 
-# Wczytaj dane (zastąp 'ścieżka_do_pliku' właściwą ścieżką do danych)
-dane <- read_csv("ścieżka_do_pliku.csv")
 
-# Przyjrzyj się danym
-skimr::skim(dane)
 
-# Wybierz istotne zmienne i usuń brakujące dane
-dane <- dane |> 
-  select(o3, nox, no2, no, ws, wd, air_temp) |> 
-  na.omit()
+# Przygotowanie danych: wybór roku 2004 i usunięcie braków
+dane_powietrza <- mydata |> selectByDate(year = 2004) |> na.omit()
+dane_powietrza |> skim()
 
-# Przekształć kierunek wiatru na zmienną kategoryczną
-source(file = "function_wd_factor.R") 
-dane <- dane |> wd_factor(wd = wd)
+# Zakres stężeń Ozonu
+zakres_o3 <- dane_powietrza |> pull(o3) |> range()
 
-# Sprawdź korelacje między zmiennymi
-dane |> select(-wd, -wd_cardinal, -no2, -nox) |> 
-  GGally::ggpairs()
+# Kategoryzacja stężeń Ozonu
+dane_powietrza <- dane_powietrza |> 
+  mutate(poziom_ozonu = cut(o3, breaks = c(-0.1, 10, 53), labels = c("Niski", "Wysoki")))
+dane_powietrza |> count(poziom_ozonu)
 ```
 
+
+
+## Przekształcenie kierunku wiatru na zmienną kategoryczną
+```{r}
+dane_powietrza <- dane_powietrza |> 
+  mutate(kierunek_wiatru = cut(
+    wd, 
+    breaks = seq(0, 360, by = 22.5), 
+    labels = c("Północ", "NNE", "Wschód", "ENE", "Wschód", "ESE", "Południowy Wschód", "SSE", 
+               "Południe", "SSW", "Zachód", "WSW", "Zachód", "WNW", "NW", "NNW"),
+    include.lowest = TRUE
+  ))
+
+# Usunięcie kolumny z datą
+dane_powietrza <- dane_powietrza |> select(-date)
+
+# Podział danych na zbiór treningowy i testowy
+podzial_danych <- initial_split(dane_powietrza, strata = poziom_ozonu, prop = 0.7)
+zbior_treningowy <- training(podzial_danych)
+zbior_testowy <- testing(podzial_danych)
+
+# Wizualizacja kierunków wiatru
+ggplot(dane_powietrza, aes(x = kierunek_wiatru)) +
+  geom_bar(fill = "cadetblue", color = "black") +
+  labs(title = "Rozkład Kierunków Wiatru", x = "Kierunek Wiatru", y = "Liczba Obserwacji") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+## Podsumowanie przekształconych danych
+
+```{r}
+glimpse(zbior_treningowy)
+```
+
+## Tworzenie receptury dla modeli
+
+```{r}
+# Receptura dla modelu GLMNET
+receptura_glmnet <- recipe(o3 ~ nox + no2 + kierunek_wiatru, data = zbior_treningowy) |>
+  step_dummy(all_nominal_predictors()) |>
+  step_normalize(all_predictors())
+
+# Receptura dla modelu RPART
+receptura_rpart <- recipe(o3 ~ nox + no2 + kierunek_wiatru, data = zbior_treningowy)
+# Receptura dla modelu RANGER
+receptura_ranger <- recipe(o3 ~ nox + no2 + kierunek_wiatru, data = zbior_treningowy)
+```
+
+## Optymalizacja modelu regresji liniowej (GLMNET)
+
+```{r}
+set.seed(456)
+
+# Model GLMNET z regularyzacją
+model_glmnet <- linear_reg(penalty = tune(), mixture = tune()) |>
+  set_engine("glmnet")
+
+# Siatka do optymalizacji hiperparametrów
+siatka_glmnet <- grid_regular(penalty(), mixture(), levels = 5)
+
+# Workflow dla modelu GLMNET
+workflow_glmnet <- workflow() |>
+  add_recipe(receptura_glmnet) |>
+  add_model(model_glmnet)
+
+# Walidacja krzyżowa
+wyniki_glmnet <- tune_grid(
+  workflow_glmnet,
+  resamples = vfold_cv(zbior_treningowy, v = 5),
+  grid = siatka_glmnet,
+  metrics = metric_set(rmse, rsq)
+)
+```
+
+## Optymalizacja modelu drzewa decyzyjnego (RPART)
+
+```{r}
+# Model RPART
+model_rpart <- decision_tree(cost_complexity = tune(), min_n = tune()) |>
+  set_engine("rpart") |>
+  set_mode("regression")
+
+# Siatka dla RPART
+siatka_rpart <- grid_regular(cost_complexity(), min_n(), levels = 5)
+
+# Workflow dla modelu RPART
+workflow_rpart <- workflow() |>
+  add_recipe(receptura_rpart) |>
+  add_model(model_rpart)
+
+# Walidacja krzyżowa
+wyniki_rpart <- tune_grid(
+  workflow_rpart,
+  resamples = vfold_cv(zbior_treningowy, v = 5),
+  grid = siatka_rpart,
+  metrics = metric_set(rmse, rsq)
+)
+```
+
+
+## Optymalizacja modelu lasu losowego (RANGER)
+
+```{r}
+# Model RANGER
+model_ranger <- rand_forest(mtry = tune(), min_n = tune(), trees = 100) |>
+  set_engine("ranger") |>
+  set_mode("regression")
+
+# Liczba predyktorów
+liczba_predyktorow <- ncol(zbior_treningowy) - 1
+
+# Siatka dla lasu losowego
+siatka_ranger <- grid_regular(
+  mtry(range = c(1, liczba_predyktorow)),
+  min_n(range = c(5, 20)),
+  levels = 5
+)
+
+# Workflow dla modelu RANGER
+workflow_ranger <- workflow() |>
+  add_recipe(receptura_ranger) |>
+  add_model(model_ranger)
+
+# Walidacja krzyżowa
+wyniki_ranger <- tune_grid(
+  workflow_ranger,
+  resamples = vfold_cv(zbior_treningowy, v = 5),
+  grid = siatka_ranger,
+  metrics = metric_set(rmse, rsq)
+)
+```
+
+## Wybór najlepszego modelu
+```{r}
+# Najlepsze modele
+najlepszy_glmnet <- select_best(wyniki_glmnet, metric = "rmse")
+final_glmnet <- finalize_workflow(workflow_glmnet, najlepszy_glmnet)
+
+najlepszy_rpart <- select_best(wyniki_rpart, metric = "rmse")
+final_rpart <- finalize_workflow(workflow_rpart, najlepszy_rpart)
+
+najlepszy_ranger <- select_best(wyniki_ranger, metric = "rmse")
+final_ranger <- finalize_workflow(workflow_ranger, najlepszy_ranger)
+```
+
+
+## Ocena modeli na zbiorze testowym
+```{r}
+# Dopasowanie modeli do zbioru testowego
+ewaluacja_glmnet <- last_fit(final_glmnet, podzial_danych)
+ewaluacja_rpart <- last_fit(final_rpart, podzial_danych)
+ewaluacja_ranger <- last_fit(final_ranger, podzial_danych)
+
+# Zbieranie wyników
+metryki_glmnet <- collect_metrics(ewaluacja_glmnet)
+metryki_rpart <- collect_metrics(ewaluacja_rpart)
+metryki_ranger <- collect_metrics(ewaluacja_ranger)
+```
+
+
+## Wykres rozrzutu
+```{r}
+# Dodanie kolumny modelu
+metryki_glmnet <- collect_metrics(ewaluacja_glmnet) |> mutate(model = "GLMNET")
+metryki_rpart <- collect_metrics(ewaluacja_rpart) |> mutate(model = "RPART")
+metryki_ranger <- collect_metrics(ewaluacja_ranger) |> mutate(model = "RANGER")
+
+# Wybór metryk RMSE dla porównania
+najlepszy_model <- bind_rows(metryki_glmnet, metryki_rpart, metryki_ranger) |>
+  filter(.metric == "rmse")
+
+najlepszy_model
+
+
+# Wizualizacja wyników
+ggplot(najlepszy_model, aes(x = model, y = .estimate, fill = model)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  labs(title = "Porównanie RMSE dla różnych modeli", x = "Model", y = "RMSE") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set2")
+```
+
+
+Skuteczność modeli:
+Modelowanie stężeń O3 przy użyciu trzech metod: regresji liniowej (GLMNET), drzew decyzyjnych (RPART) i lasów losowych (RANGER). Wybór modelu z najniższym RMSE.
