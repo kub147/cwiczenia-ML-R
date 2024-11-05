@@ -1,0 +1,65 @@
+---
+title: "Zadanie 6" 
+author: Jakub Wilk
+date: 2024-10-23
+format:   
+  html:    
+    toc: true    
+    toc-depth: 3    
+    toc-location: right    
+    toc-title: Spis Treści    
+    number-sections: true    
+    number-depth: 3    
+    html-math-method: katex    
+    code-tools: true    
+    code-block-bg: true    
+    code-fold: show    
+    code-summary: "Show and hide code"    
+    link-external-icon: true    
+    link-external-newwindow: true    
+    smooth-scroll: true    
+    self-contained: true 
+    theme:         
+      dark: solar 
+      light: flatly    
+    fontsize: 1.0em    
+    linestretch: 1.3    
+    fig-align: center
+execute:   
+  echo: true  
+  error: false  
+  warning: false  
+  output: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+# Wczytaj wymagane pakiety
+library(tidymodels)
+library(glmnet)
+library(rpart)
+library(ranger)
+library(readr)
+library(GGally)
+
+# Wczytaj dane (zastąp 'ścieżka_do_pliku' właściwą ścieżką do danych)
+dane <- read_csv("ścieżka_do_pliku.csv")
+
+# Przyjrzyj się danym
+skimr::skim(dane)
+
+# Wybierz istotne zmienne i usuń brakujące dane
+dane <- dane |> 
+  select(o3, nox, no2, no, ws, wd, air_temp) |> 
+  na.omit()
+
+# Przekształć kierunek wiatru na zmienną kategoryczną
+source(file = "function_wd_factor.R") 
+dane <- dane |> wd_factor(wd = wd)
+
+# Sprawdź korelacje między zmiennymi
+dane |> select(-wd, -wd_cardinal, -no2, -nox) |> 
+  GGally::ggpairs()
+```
+
