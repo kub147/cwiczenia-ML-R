@@ -30,16 +30,21 @@ execute:
   error: false  
   warning: false  
   output: true
+editor_options: 
+  chunk_output_type: console
 ---
 
 # Przygotowanie środowiska
 ```{r}
-library(tidymodels)
-library(openair)
-library(rpart.plot)
+library(tidymodels) 
+library(skimr) 
 library(vip)
+library(GGally) 
+library(openair)
+library(DT) 
+library(dplyr)
 library(ranger)
-library(recipes)
+library(yardstick)
 tidymodels_prefer()
 
 # Ustawienie ziarna losowości
@@ -49,220 +54,175 @@ set.seed(123)
 # Wczytanie i przygotowanie danych
 ```{r}
 # Wczytanie danych z openair
-air <- mydata |> 
-  selectByDate(year = 2001) |>
+ozone_data <- mydata |> 
+  selectByDate(year = 2002) |> 
   na.omit()
 
 # Klasyfikacja wartości O3 na dwie kategorie
-air <- air |> 
+ozone_data <- ozone_data |>  
   mutate(ozone = cut(
     o3,
-    breaks = c(-0.1, 10, 58),
-    labels = c("Niskie", "Wysokie")
-  )) |>
-  select(-o3)
+    breaks = c(-0.1, 10, 53),
+    labels = c("Low", "High")
+  ))
 
-# Podział danych
-split <- initial_split(air, prop = 0.75, strata = ozone)
-train_data <- training(split)
-test_data <- testing(split)
+# Check correlation
+ozone_data |> 
+  select_if(is.numeric) |> 
+  cor(use = "complete.obs") |> 
+  as.data.frame() |> 
+  select(o3)
 ```
+
+
+```{r}
+set.seed(222)
+data_split <- initial_split(data=ozone_data, prop = 0.75, strata = ozone)
+train_set <- training(data_split)
+test_set <- testing(data_split)
+
+ggplot(train_set, aes(x = date, y = o3)) + 
+  geom_line() + 
+  theme_minimal()
+```
+
+
 
 # Ćwiczenie 4.6 - Optymalizacja drzewa decyzyjnego
 
 ## Przygotowanie modelu i przepisu (recipe)
 ```{r}
-# Tworzenie przepisu
-air_recipe <- recipe(ozone ~ ., data = train_data) |>
-  update_role(date, new_role = "predictor") |>
-  step_date(date, features = c("dow", "month")) |>
-  step_normalize(all_numeric_predictors()) |>
-  step_dummy(all_nominal_predictors(), one_hot = TRUE)
-
-# Specyfikacja modelu z parametrami do dostrojenia
-tree_spec <- decision_tree(
-  cost_complexity = tune(),
-  tree_depth = tune()
-) |>
-  set_engine("rpart") |>
+hyper_spec <- 
+  rand_forest(mtry = tune(),
+              min_n = tune(),
+              trees = 1000) |>
+  set_engine("ranger",
+  num.threads=parallel::detectCores() - 1,
+  importance = "impurity") |> 
   set_mode("classification")
 
-# Utworzenie workflow
-tree_workflow <- workflow() |>
-  add_model(tree_spec) |>
-  add_recipe(air_recipe)
 ```
 
 ## Przygotowanie siatki parametrów
 ```{r}
-# Stworzenie siatki parametrów
-tree_grid <- grid_regular(
-  cost_complexity(),
-  tree_depth(),
+# Stworzenie siatki parametrów dla lasu losowego
+param_grid <- grid_regular(
+  mtry(range = c(1, 10)),
+  min_n(range = c(1, 10)),
   levels = 5
 )
-
-# Przegląd siatki
-print("Siatka parametrów:")
-tree_grid
+print("Siatka parametrów dla lasu losowego:")
+param_grid
 ```
 
 ## Walidacja krzyżowa i dostrajanie
 ```{r}
 # Przygotowanie foldów CV
 set.seed(234)
-folds <- vfold_cv(train_data, v = 5)
+cv_folds <- vfold_cv(data=train_set, v=10, repeats = 5)
 
-# Zdefiniowanie metryk oceny
-metrics <- metric_set(
-  accuracy,
-  roc_auc,
-  precision,
-  recall
-)
 
-# Dostrajanie modelu
-tree_tuning <- tune_grid(
-  tree_workflow,
-  resamples = folds,
-  grid = tree_grid,
-  metrics = metrics
-)
+# przepis
+ozone_recipe <- 
+  recipe(ozone ~ ., data = train_set) |> 
+  update_role(o3, wd, date, pm10, pm25, so2, co, no2, new_role = "ID") |> 
+  step_BoxCox(ws, nox, no2) |> 
+  step_date(date, features = c("month")) |> 
+  step_time(date, features = c("hour")) |>
+  step_mutate(date_hour = as.factor(date_hour)) |>  
+  step_dummy(all_nominal_predictors()) |> 
+  step_zv()
 
-# Wyświetlenie najlepszych wyników
-print("Najlepsze wyniki dla drzewa decyzyjnego:")
-show_best(tree_tuning, "accuracy")
+
+ozone_recipe |> summary()
+
 ```
+
+
+
+```{r}
+# workflow
+basic_rf_workflow <- 
+  workflow() |> 
+  add_model(hyper_spec) |> 
+  add_recipe(ozone_recipe)
+```
+
 
 ## Finalizacja modelu drzewa
 ```{r}
-# Wybór najlepszych parametrów
-best_tree <- select_best(tree_tuning, "accuracy")
+# Resampling
+rf_fit_cv <- 
+  basic_rf_workflow |> 
+  fit_resamples(cv_folds)
+```
 
-# Finalizacja workflow
-final_tree_workflow <- finalize_workflow(
-  tree_workflow,
-  best_tree
-)
 
-# Dopasowanie finalnego modelu
-final_tree_fit <- last_fit(
-  final_tree_workflow,
-  split
-)
+## Hyperparametry
 
-# Wyniki końcowe
-print("Wyniki końcowe drzewa decyzyjnego:")
-collect_metrics(final_tree_fit)
+```{r}
+tuning_metrics  <- 
+  yardstick::metric_set(
+    accuracy,
+    mcc,
+    npv,
+    roc_auc
+  )
 
-# Wizualizacja drzewa
-final_tree_fit |>
-  extract_workflow() |>
-  extract_fit_engine() |>
-  rpart.plot(roundint = FALSE)
+tuned_results <- basic_rf_workflow |> 
+  tune_grid(
+    resamples=cv_folds,
+    grid=param_grid,
+    metrics=tuning_metrics
+  )
+```
 
-# Ważność zmiennych
-final_tree_fit |>
-  extract_workflow() |>
+```{r}
+tuned_results |> 
+  collect_metrics() |> 
+  mutate(mtry = factor(mtry)) |>
+  ggplot(aes(min_n, mean, color = mtry)) +
+  geom_line(linewidth = 1.5, alpha = 0.6) +
+  geom_point(size = 2) +
+  facet_wrap(~ .metric, scales = "free", nrow = 2) +
+  scale_x_log10(labels = scales::label_number()) +
+  scale_color_viridis_d(option = "plasma", begin = .9, end = 0)
+```
+
+## najlepszy model 
+```{r}
+best_params <- tuned_results |> 
+  select_best(metric="accuracy")
+
+final_rf_workflow <- basic_rf_workflow |> 
+  finalize_workflow(best_params)
+
+final_fit <- 
+  final_rf_workflow |> 
+  last_fit(split=data_split)
+
+# Evaluate predictions
+final_fit |> 
+  collect_predictions() |> 
+  roc_curve(truth = ozone, .pred_Low) |> 
+  autoplot()
+```
+
+
+```{r}
+final_fit |> 
+  extract_workflow() |> 
   extract_fit_parsnip() |>
   vip()
 ```
 
-# Ćwiczenie 4.7 - Optymalizacja lasu losowego
-
-## Specyfikacja modelu
 ```{r}
-# Specyfikacja modelu lasu losowego z parametrami do dostrojenia
-rf_spec <- rand_forest(
-  mtry = tune(),
-  min_n = tune(),
-  trees = 1000
-) |>
-  set_engine("ranger") |>
-  set_mode("classification")
-
-# Utworzenie workflow
-rf_workflow <- workflow() |>
-  add_model(rf_spec) |>
-  add_recipe(air_recipe)
-```
-
-## Przygotowanie siatki parametrów
-```{r}
-# Stworzenie siatki parametrów dla lasu losowego
-rf_grid <- grid_regular(
-  mtry(range = c(2, 8)),
-  min_n(range = c(5, 20)),
-  levels = 6
+final_metrics <- bind_rows(
+  final_fit |> 
+    collect_metrics() |> 
+    filter(.metric == "accuracy" | .metric == "roc_auc") |>
+    mutate(.approach = "final_fit")
 )
 
-print("Siatka parametrów dla lasu losowego:")
-rf_grid
-```
-
-## Dostrajanie modelu lasu losowego
-```{r}
-# Dostrajanie modelu
-rf_tuning <- tune_grid(
-  rf_workflow,
-  resamples = folds,
-  grid = rf_grid,
-  metrics = metrics
-)
-
-# Wyświetlenie najlepszych wyników
-print("Najlepsze wyniki dla lasu losowego:")
-show_best(rf_tuning, "accuracy")
-```
-
-## Finalizacja modelu lasu losowego
-```{r}
-# Wybór najlepszych parametrów
-best_rf <- select_best(rf_tuning, "accuracy")
-
-# Finalizacja workflow
-final_rf_workflow <- finalize_workflow(
-  rf_workflow,
-  best_rf
-)
-
-# Dopasowanie finalnego modelu
-final_rf_fit <- last_fit(
-  final_rf_workflow,
-  split
-)
-
-# Wyniki końcowe
-print("Wyniki końcowe lasu losowego:")
-collect_metrics(final_rf_fit)
-
-# Ważność zmiennych
-final_rf_fit |>
-  extract_workflow() |>
-  extract_fit_parsnip() |>
-  vip()
-```
-
-# Porównanie modeli
-```{r}
-# Zbieranie predykcji z obu modeli
-tree_predictions <- collect_predictions(final_tree_fit)
-rf_predictions <- collect_predictions(final_rf_fit)
-
-# ROC krzywe
-tree_roc <- tree_predictions |>
-  roc_curve(ozone, .pred_Niskie) |>
-  mutate(model = "Decision Tree")
-
-rf_roc <- rf_predictions |>
-  roc_curve(ozone, .pred_Niskie) |>
-  mutate(model = "Random Forest")
-
-# Połączenie wyników
-bind_rows(tree_roc, rf_roc) |>
-  ggplot(aes(x = 1 - specificity, y = sensitivity, color = model)) +
-  geom_line() +
-  geom_abline(lty = 2, alpha = 0.5) +
-  coord_equal() +
-  labs(title = "Porównanie krzywych ROC dla obu modeli")
+final_metrics |> knitr::kable(digits = 3)
 ```

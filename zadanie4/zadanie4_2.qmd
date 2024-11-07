@@ -1,0 +1,192 @@
+---
+title: "Zadanie 4 i 5" 
+author: Jakub Wilk
+date: 2024-10-23
+format:   
+  html:    
+    toc: true    
+    toc-depth: 3    
+    toc-location: right    
+    toc-title: Spis Treści    
+    number-sections: true    
+    number-depth: 3    
+    html-math-method: katex    
+    code-tools: true    
+    code-block-bg: true    
+    code-fold: show    
+    code-summary: "Show and hide code"    
+    link-external-icon: true    
+    link-external-newwindow: true    
+    smooth-scroll: true    
+    self-contained: true 
+    theme:         
+      dark: solar 
+      light: flatly    
+    fontsize: 1.0em    
+    linestretch: 1.3    
+    fig-align: center
+execute:   
+  echo: true  
+  error: false  
+  warning: false  
+  output: true
+editor_options: 
+  chunk_output_type: console
+---
+# Przygotowanie danych
+```{r}
+library(tidymodels) 
+library(skimr) 
+library(GGally) 
+library(openair) 
+library(dplyr) 
+library(randomForest) 
+library(yardstick)
+
+tidymodels_prefer()
+set.seed(123)
+```
+
+
+## Wczytanie i przygotowanie danych
+
+```{r}
+# Wczytanie danych z openair
+ozone_data <- mydata |> 
+  selectByDate(year = 2004) |> 
+  na.omit()
+
+# Klasyfikacja wartości O3 na dwie kategorie
+ozone_data <- ozone_data |>  
+  mutate(ozone = cut(
+    o3,
+    breaks = c(-0.1, 10, 53),
+    labels = c("Niskie", "Wysokie")
+  ))
+
+# Split danych
+data_split <- initial_split(ozone_data, strata = ozone, prop = 0.75)  
+train_set <- training(data_split)
+test_set <- testing(data_split)
+```
+
+
+# Ćwiczenie 4 - Argumenty drzewa decyzyjnego
+```{r}
+# Dostępne argumenty dla decision_tree
+args(decision_tree)
+```
+
+
+## Przygotowanie modelu drzewa decyzyjnego
+```{r}
+# Przygotowanie modelu drzewa decyzyjnego z tuningiem
+tree_spec <- decision_tree(
+  tree_depth = tune(),
+  cost_complexity = tune(),
+  min_n = tune()
+) |> 
+  set_engine("rpart") |> 
+  set_mode("classification")
+```
+
+## Przygotowanie siatki parametrów dla drzewa decyzyjnego
+
+```{r}
+# Siatka parametrów dla drzewa decyzyjnego
+tree_grid <- grid_regular(
+  tree_depth(range = c(1, 10)),
+  cost_complexity(range = c(0, 0.1)),
+  min_n(range = c(1, 10)),
+  levels = 5
+)
+```
+
+## Walidacja krzyżowa i dostrajanie dla drzewa decyzyjnego
+
+```{r}
+# CV, 5-krotna walidacja
+cv_folds <- vfold_cv(train_set, v = 5, strata = ozone)  
+
+# Workflow
+tree_workflow <- workflow()|> 
+  add_model(tree_spec) |> 
+  add_formula(ozone ~ nox + no2)
+
+```
+
+```{r}
+#| eval: false
+# Strojenie modelu
+tune_results_tree <- tune_grid(
+  tree_workflow,
+  resamples = cv_folds,
+  grid = tree_grid,
+  metrics = metric_set(roc_auc, accuracy)
+)
+
+
+# Zbierz wyniki
+best_params_tree <- select_best(tune_results_tree, metric = "accuracy")
+```
+
+
+# Ćwiczenie 5 - Optymalizacja hiper-parametrów lasu losowego
+```{r}
+# Przygotowanie modelu lasu losowego z tuningiem
+rf_spec <- rand_forest(
+  mtry = tune(),
+  trees = 1000,
+  min_n = tune()
+) |> 
+  set_engine("ranger") |> 
+  set_mode("classification")
+
+# Siatka parametrów dla lasu losowego
+rf_grid <- grid_regular(
+  mtry(range = c(1, 10)),
+  min_n(range = c(1, 10)),
+  levels = 5
+)
+
+# Workflow dla lasu losowego
+rf_workflow <- workflow() |> 
+  add_model(rf_spec) |> 
+  add_formula(ozone ~ nox + no2)
+
+```
+
+```{r}
+#| eval: false
+# Walidacja krzyżowa i dostrajanie dla lasu losowego
+tune_results_rf <- tune_grid(
+  rf_workflow,
+  resamples = cv_folds,
+  grid = rf_grid,
+  metrics = metric_set(roc_auc, accuracy)
+)
+
+# Najlepsze parametry
+best_params_rf <- select_best(tune_results_rf, metric = "accuracy")
+```
+
+## zapis
+```{r}
+#| eval: false
+save(best_params_tree, best_params_rf, file = "best_params.RData")
+```
+
+
+```{r}
+load("best_params.RData")
+```
+
+
+```{r}
+# Wyświetlenie najlepszych parametrów dla obu modeli
+best_params_tree
+best_params_rf
+```
+
+# Wnioski
+Jeszcze do zrobienia
