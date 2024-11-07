@@ -194,6 +194,17 @@ wyniki_ranger <- tune_grid(
 )
 ```
 
+## Zapis Rdata
+```{r}
+#| eval: false
+save(wyniki_glmnet, wyniki_rpart, wyniki_ranger, file = "wyniki_modeli.Rdata")
+```
+
+```{r}
+load(file = "wyniki_modeli.Rdata")
+```
+
+
 ## Wybór najlepszego modelu
 ```{r}
 # Najlepsze modele
@@ -246,4 +257,31 @@ ggplot(najlepszy_model, aes(x = model, y = .estimate, fill = model)) +
 
 
 Skuteczność modeli:
-Modelowanie stężeń O3 przy użyciu trzech metod: regresji liniowej (GLMNET), drzew decyzyjnych (RPART) i lasów losowych (RANGER). Wybór modelu z najniższym RMSE.
+Modelowanie stężeń O3 przy użyciu trzech metod: regresji liniowej (GLMNET), drzew decyzyjnych (RPART) i lasów losowych (RANGER). Wybór modelu z najniższym RMSE. Najlepszy Ranger.
+
+
+##Wykres rozrzutu z linią modelu idealnego.
+
+```{r}
+# Ocena przewidywań na zbiorze testowym i dodanie linii modelu idealnego
+pred_glmnet <- collect_predictions(ewaluacja_glmnet)
+pred_rpart <- collect_predictions(ewaluacja_rpart)
+pred_ranger <- collect_predictions(ewaluacja_ranger)
+
+# Tworzenie wykresu rozrzutu dla każdego modelu z linią y = x
+ggplot() +
+  geom_point(data = pred_glmnet, aes(x = .pred, y = o3), color = "blue", size = 1.5, alpha = 0.3) +
+  geom_point(data = pred_rpart, aes(x = .pred, y = o3), color = "red", size = 1.5, alpha = 0.3) +
+  geom_point(data = pred_ranger, aes(x = .pred, y = o3), color = "green", size = 1.5, alpha = 0.3) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black") +
+  labs(title = "Porównanie przewidywań modeli z rzeczywistymi wartościami stężenia O₃",
+       x = "Przewidywane stężenie O₃", y = "Rzeczywiste stężenie O₃",
+       color = "Model") +
+  theme_minimal() +
+  scale_color_manual(
+    name = "Model",
+    values = c("blue" = "GLMNET", "red" = "RPART", "green" = "RANGER"),
+    labels = c("GLMNET", "RPART", "RANGER")
+  )
+```
+
