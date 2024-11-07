@@ -126,7 +126,10 @@ siatka_glmnet <- grid_regular(penalty(), mixture(), levels = 5)
 workflow_glmnet <- workflow() |>
   add_recipe(receptura_glmnet) |>
   add_model(model_glmnet)
+```
 
+```{r}
+#| eval: false
 # Walidacja krzyżowa
 wyniki_glmnet <- tune_grid(
   workflow_glmnet,
@@ -135,6 +138,7 @@ wyniki_glmnet <- tune_grid(
   metrics = metric_set(rmse, rsq)
 )
 ```
+
 
 ## Optymalizacja modelu drzewa decyzyjnego (RPART)
 
@@ -151,8 +155,12 @@ siatka_rpart <- grid_regular(cost_complexity(), min_n(), levels = 5)
 workflow_rpart <- workflow() |>
   add_recipe(receptura_rpart) |>
   add_model(model_rpart)
+```
 
+```{r}
+#| eval: false
 # Walidacja krzyżowa
+
 wyniki_rpart <- tune_grid(
   workflow_rpart,
   resamples = vfold_cv(zbior_treningowy, v = 5),
@@ -185,6 +193,10 @@ workflow_ranger <- workflow() |>
   add_recipe(receptura_ranger) |>
   add_model(model_ranger)
 
+```
+
+```{r}
+#| eval: false
 # Walidacja krzyżowa
 wyniki_ranger <- tune_grid(
   workflow_ranger,
@@ -193,6 +205,8 @@ wyniki_ranger <- tune_grid(
   metrics = metric_set(rmse, rsq)
 )
 ```
+
+
 
 ## Zapis Rdata
 ```{r}
