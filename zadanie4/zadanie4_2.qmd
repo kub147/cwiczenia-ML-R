@@ -1,5 +1,5 @@
 ---
-title: "Zadanie 4" 
+title: "Zadanie 4 i 5" 
 author: Jakub Wilk
 date: 2024-10-23
 format:   
@@ -113,6 +113,10 @@ tree_workflow <- workflow()|>
   add_model(tree_spec) |> 
   add_formula(ozone ~ nox + no2)
 
+```
+
+```{r}
+#| eval: false
 # Strojenie modelu
 tune_results_tree <- tune_grid(
   tree_workflow,
@@ -121,9 +125,9 @@ tune_results_tree <- tune_grid(
   metrics = metric_set(roc_auc, accuracy)
 )
 
+
 # Zbierz wyniki
 best_params_tree <- select_best(tune_results_tree, metric = "accuracy")
-
 ```
 
 
@@ -150,6 +154,10 @@ rf_workflow <- workflow() |>
   add_model(rf_spec) |> 
   add_formula(ozone ~ nox + no2)
 
+```
+
+```{r}
+#| eval: false
 # Walidacja krzyżowa i dostrajanie dla lasu losowego
 tune_results_rf <- tune_grid(
   rf_workflow,
@@ -160,7 +168,17 @@ tune_results_rf <- tune_grid(
 
 # Najlepsze parametry
 best_params_rf <- select_best(tune_results_rf, metric = "accuracy")
+```
 
+## zapis
+```{r}
+#| eval: false
+save(best_params_tree, best_params_rf, file = "best_params.RData")
+```
+
+
+```{r}
+load("best_params.RData")
 ```
 
 
@@ -171,18 +189,4 @@ best_params_rf
 ```
 
 # Wnioski
-Na podstawie przeprowadzonego dostrajania hiperparametrów dla modeli drzewa decyzyjnego oraz lasu losowego otrzymano następujące optymalne parametry:
-
-##Model Drzewa Decyzyjnego
-Cost Complexity: 1
-Tree Depth: 1
-Min N: 1
-Zastosowanie tych wartości wskazuje na bardzo proste drzewo decyzyjne, co może sugerować ryzyko niedopasowania (underfitting) modelu do danych. Warto rozważyć eksperymentowanie z większą głębokością drzewa oraz innymi wartościami parametru cost complexity, aby uzyskać bardziej złożony model, który lepiej uchwyci zależności w danych.
-
-##Model Lasu Losowego
-Mtry: 1
-Min N: 10
-Optymalne wartości dla lasu losowego wskazują, że model wykorzystuje tylko jedną zmienną (nox lub no2) w każdym podziale drzewa, a jednocześnie wymaga przynajmniej 10 obserwacji do podziału. Taki dobór może pomóc w zminimalizowaniu przeuczenia i poprawić stabilność modelu.
-
-##Podsumowanie
-Dostrojone modele zostały skonfigurowane z wartościami, które potencjalnie mogą zapewnić dobre wyniki na zestawie testowym.
+Jeszcze do zrobienia
